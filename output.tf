@@ -6,7 +6,7 @@ output "function_name" {
   description = "Name of the Lambda function."
   value = module.lambda_function.lambda_function_name
 }
-output "base_url" {
+output "gateway_url" {
   description = "Base URL for API Gateway stage."
   value = aws_apigatewayv2_stage.lambda.invoke_url
 }

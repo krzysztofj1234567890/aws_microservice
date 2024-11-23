@@ -26,8 +26,11 @@ cat response.json
 
 Test lambda and API gateway
 ```
-curl "$(terraform output -raw base_url)/hello"
-curl "$(terraform output -raw base_url)/hello?Name=Terraform"
+curl "$(terraform output -raw gateway_url)/hello"
+curl "$(terraform output -raw gateway_url)/hello?Name=Terraform"
+
+curl -X POST "$(terraform output -raw gateway_url)/users"
+curl -X POST "$(terraform output -raw gateway_url)/users" --header 'Content-Type: application/json' -d '{"email":"kj@kj.com"}'
 ```
 
 ## Destroy

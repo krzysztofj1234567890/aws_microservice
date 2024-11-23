@@ -43,7 +43,7 @@ resource "aws_dynamodb_table" "user_table" {
 module "lambda_function" {
   source = "terraform-aws-modules/lambda/aws"
   function_name = "Hello"
-  description   = "My awesome lambda function"
+  description   = "My test lambda function"
   handler       = "hello.handler"
   runtime       = "nodejs20.x"
   source_path = "src/lambda_hello"
@@ -63,6 +63,10 @@ module "lambda_write_user" {
   environment_variables = {
     DB_TABLE = "user_table"
   }
+  logging_log_group             = "/aws/lambda/write_user_test"
+  logging_log_format            = "JSON"
+  logging_application_log_level = "INFO"
+  logging_system_log_level      = "DEBUG"
 }
 
 resource "aws_iam_role" "lambda_exec" {
@@ -114,6 +118,12 @@ resource "aws_iam_role_policy_attachment" "lambda_policy" {
   role       = aws_iam_role.lambda_exec.name
   policy_arn = aws_iam_policy.lambda_exec_role.arn
 }
+
+## store log messages
+##resource "aws_cloudwatch_log_group" "lambda" {
+##  name = "/aws/lambda/${module.lambda_write_user.function_name}"
+##  retention_in_days = 3
+##}
 
 #######################################################
 # create API Gateway
