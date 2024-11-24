@@ -43,3 +43,7 @@ terraform destroy
 https://developer.hashicorp.com/terraform/tutorials/aws/lambda-api-gateway 
 
 https://github.com/aws-samples/serverless-patterns/blob/main/apigw-lambda-dynamodb-terraform/main.tf
+
+https://registry.terraform.io/modules/terraform-aws-modules/lambda/aws/latest
+
+https://github.com/terraform-aws-modules/terraform-aws-lambda/blob/master/examples/complete/main.tf

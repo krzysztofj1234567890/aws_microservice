@@ -67,8 +67,39 @@ module "lambda_write_user" {
   logging_log_format            = "JSON"
   logging_application_log_level = "INFO"
   logging_system_log_level      = "DEBUG"
+
+  attach_policy_jsons = true
+  policy_jsons = [
+    <<-EOT
+      {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem",
+                    "dynamodb:UpdateItem"
+                ],
+                "Resource": "arn:aws:dynamodb:*:*:table/user_table"
+            },
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                ],
+                "Resource": "*"
+            }
+          ]
+      }
+    EOT
+  ]
+  number_of_policy_jsons = 1
 }
 
+## DEL
 resource "aws_iam_role" "lambda_exec" {
   name = "LambdaDdbPost"
   assume_role_policy = jsonencode({
@@ -85,6 +116,7 @@ resource "aws_iam_role" "lambda_exec" {
   })
 }
 
+## DEL
 resource "aws_iam_policy" "lambda_exec_role" {
   name = "lambda-tf-pattern-db-post"
   policy = <<POLICY
@@ -114,10 +146,11 @@ resource "aws_iam_policy" "lambda_exec_role" {
 POLICY
 }
 
-resource "aws_iam_role_policy_attachment" "lambda_policy" {
-  role       = aws_iam_role.lambda_exec.name
-  policy_arn = aws_iam_policy.lambda_exec_role.arn
-}
+## DEL
+#resource "aws_iam_role_policy_attachment" "lambda_policy" {
+#  role       = aws_iam_role.lambda_exec.name
+#  policy_arn = aws_iam_policy.lambda_exec_role.arn
+#}
 
 ## store log messages
 ##resource "aws_cloudwatch_log_group" "lambda" {
