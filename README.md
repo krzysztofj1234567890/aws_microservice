@@ -18,19 +18,13 @@ terraform apply
 
 ### Test
 
-Test lambda
-```
-aws lambda invoke --region=us-east-1 --function-name=$(terraform output -raw function_name) response.json
-cat response.json
-```
-
 Test lambda and API gateway
 ```
-curl "$(terraform output -raw gateway_url)/hello"
-curl "$(terraform output -raw gateway_url)/hello?Name=Terraform"
-
-curl -X POST "$(terraform output -raw gateway_url)/users"
+# write
 curl -X POST "$(terraform output -raw gateway_url)/users" --header 'Content-Type: application/json' -d '{"email":"kj@kj.com"}'
+
+# read
+curl -X GET "$(terraform output -raw gateway_url)/users" --header 'Content-Type: application/json'
 ```
 
 ## Destroy

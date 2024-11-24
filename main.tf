@@ -40,17 +40,6 @@ resource "aws_dynamodb_table" "user_table" {
 #######################################################
 # create lambda(s)
 #######################################################
-module "lambda_function" {
-  source = "terraform-aws-modules/lambda/aws"
-  function_name = "Hello"
-  description   = "My test lambda function"
-  handler       = "hello.handler"
-  runtime       = "nodejs20.x"
-  source_path = "src/lambda_hello"
-  store_on_s3 = true
-  s3_bucket   = aws_s3_bucket.lambda_bucket.id
-}
-
 module "lambda_write_user" {
   source = "terraform-aws-modules/lambda/aws"
   function_name = "WriteUser"
@@ -99,64 +88,54 @@ module "lambda_write_user" {
   number_of_policy_jsons = 1
 }
 
-## DEL
-resource "aws_iam_role" "lambda_exec" {
-  name = "LambdaDdbPost"
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
-      Sid    = ""
-      Principal = {
-        Service = "lambda.amazonaws.com"
+module "lambda_read_user" {
+  source = "terraform-aws-modules/lambda/aws"
+  function_name = "ReadUser"
+  description   = "List users"
+  handler       = "read_user.lambda_handler"
+  runtime       = "python3.8"
+  source_path = "src/read_user"
+  store_on_s3 = true
+  s3_bucket   = aws_s3_bucket.lambda_bucket.id
+  environment_variables = {
+    DB_TABLE = "user_table"
+  }
+  logging_log_group             = "/aws/lambda/read_user_test"
+  logging_log_format            = "JSON"
+  logging_application_log_level = "INFO"
+  logging_system_log_level      = "DEBUG"
+
+  attach_policy_jsons = true
+  policy_jsons = [
+    <<-EOT
+      {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem",
+                    "dynamodb:UpdateItem",
+                    "dynamodb:Scan"
+                ],
+                "Resource": "arn:aws:dynamodb:*:*:table/user_table"
+            },
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                ],
+                "Resource": "*"
+            }
+          ]
       }
-      }
-    ]
-  })
+    EOT
+  ]
+  number_of_policy_jsons = 1
 }
-
-## DEL
-resource "aws_iam_policy" "lambda_exec_role" {
-  name = "lambda-tf-pattern-db-post"
-  policy = <<POLICY
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "dynamodb:GetItem",
-                "dynamodb:PutItem",
-                "dynamodb:UpdateItem"
-            ],
-            "Resource": "arn:aws:dynamodb:*:*:table/user_table"
-        },
-        {
-            "Effect": "Allow",
-            "Action": [
-                "logs:CreateLogGroup",
-                "logs:CreateLogStream",
-                "logs:PutLogEvents"
-            ],
-            "Resource": "*"
-        }
-    ]
-}
-POLICY
-}
-
-## DEL
-#resource "aws_iam_role_policy_attachment" "lambda_policy" {
-#  role       = aws_iam_role.lambda_exec.name
-#  policy_arn = aws_iam_policy.lambda_exec_role.arn
-#}
-
-## store log messages
-##resource "aws_cloudwatch_log_group" "lambda" {
-##  name = "/aws/lambda/${module.lambda_write_user.function_name}"
-##  retention_in_days = 3
-##}
 
 #######################################################
 # create API Gateway
@@ -199,31 +178,6 @@ resource "aws_cloudwatch_log_group" "api_gw" {
 # Lambda(s) routing
 #######################################################
 
-### hello.js
-
-# configure api gateway to use the lambda function
-resource "aws_apigatewayv2_integration" "hello" {
-  api_id = aws_apigatewayv2_api.lambda.id
-  integration_uri    = module.lambda_function.lambda_function_arn
-  integration_type   = "AWS_PROXY"
-  integration_method = "POST"
-}
-
-# routing to lambda
-resource "aws_apigatewayv2_route" "hello" {
-  api_id = aws_apigatewayv2_api.lambda.id
-  route_key = "GET /hello"
-  target    = "integrations/${aws_apigatewayv2_integration.hello.id}"
-}
-
-resource "aws_lambda_permission" "api_gw_hello" {
-  statement_id  = "AllowExecutionFromAPIGateway"
-  action        = "lambda:InvokeFunction"
-  function_name = module.lambda_function.lambda_function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn = "${aws_apigatewayv2_api.lambda.execution_arn}/*/*"
-}
-
 ### write_user.py
 
 resource "aws_apigatewayv2_integration" "write_user" {
@@ -233,7 +187,7 @@ resource "aws_apigatewayv2_integration" "write_user" {
   integration_method = "POST"
 }
 
-resource "aws_apigatewayv2_route" "post" {
+resource "aws_apigatewayv2_route" "write_user" {
   api_id = aws_apigatewayv2_api.lambda.id
   route_key = "POST /users"
   target    = "integrations/${aws_apigatewayv2_integration.write_user.id}"
@@ -243,6 +197,29 @@ resource "aws_lambda_permission" "api_gw_write_user" {
   statement_id  = "AllowExecutionFromAPIGateway"
   action        = "lambda:InvokeFunction"
   function_name = module.lambda_write_user.lambda_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn = "${aws_apigatewayv2_api.lambda.execution_arn}/*/*"
+}
+
+## read_user.py
+
+resource "aws_apigatewayv2_integration" "read_user" {
+  api_id = aws_apigatewayv2_api.lambda.id
+  integration_uri    = module.lambda_read_user.lambda_function_arn
+  integration_type   = "AWS_PROXY"
+  integration_method = "POST"
+}
+
+resource "aws_apigatewayv2_route" "read_user" {
+  api_id = aws_apigatewayv2_api.lambda.id
+  route_key = "GET /users"
+  target    = "integrations/${aws_apigatewayv2_integration.read_user.id}"
+}
+
+resource "aws_lambda_permission" "api_gw_read_user" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = module.lambda_read_user.lambda_function_name
   principal     = "apigateway.amazonaws.com"
   source_arn = "${aws_apigatewayv2_api.lambda.execution_arn}/*/*"
 }
