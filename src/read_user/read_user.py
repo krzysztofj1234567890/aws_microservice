@@ -6,31 +6,51 @@ import logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-dynamodb_client = boto3.client('dynamodb')
-dynamodb_resource = boto3.resource("dynamodb")
+client = boto3.client('dynamodb')
+dynamodb = boto3.resource("dynamodb")
 
 def lambda_handler(event, context):
   table = os.environ.get('DB_TABLE')
   logging.info(f"## Loaded table name from environemt variable DB_TABLE: {table}")
-  dynamodb_table = dynamodb_resource.Table( table )
+  dynamodb_table = dynamodb.Table( table )
   logging.info( event )
-  body = dynamodb_table.scan()
-  body = body["Items"]
-  logging.info( body )
+  requestContext = event['requestContext']
+  resourceId = requestContext['resourceId'] 
+  logging.info( resourceId )
+  pathParameters = event['pathParameters']
+  logging.info( pathParameters )
+
+  body = {}
   statusCode = 200
 
-  responseBody = []
-  for items in body:
-        responseItems = [
-            {'email': items['email']}]
-        responseBody.append(responseItems)
-  body = responseBody
+  try:
+    if resourceId == "GET /users":
+        body = dynamodb_table.scan()
+        body = body["Items"]
+        logging.info( body )
+        responseBody = []
+        for items in body:
+            responseItems = [
+                {'email': items['email']}
+            ]
+            responseBody.append(responseItems)
+        body = responseBody
+    if resourceId == "GET /users/{email}":
+        body = dynamodb_table.get_item( Key={'email': pathParameters['email']})
+        body = body["Item"]
+        logging.info( body )
+        responseBody = [{'email': items['email']}]
+        body = responseBody
+  except KeyError:
+     statusCode = 400
+     body = 'Unsupported route: ' + resourceId
+
   body = json.dumps(body)
-  res = {
+  result = {
         "statusCode": statusCode,
         "headers": {
             "Content-Type": "application/json"
         },
         "body": body
   }
-  return res
+  return result
