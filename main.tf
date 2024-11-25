@@ -210,9 +210,15 @@ resource "aws_apigatewayv2_integration" "read_user" {
   integration_method = "POST"
 }
 
-resource "aws_apigatewayv2_route" "read_user" {
+resource "aws_apigatewayv2_route" "read_user_1" {
   api_id = aws_apigatewayv2_api.lambda.id
   route_key = "GET /users"
+  target    = "integrations/${aws_apigatewayv2_integration.read_user.id}"
+}
+
+resource "aws_apigatewayv2_route" "read_user_2" {
+  api_id = aws_apigatewayv2_api.lambda.id
+  route_key = "GET /users/{email+}"
   target    = "integrations/${aws_apigatewayv2_integration.read_user.id}"
 }
 

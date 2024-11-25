@@ -13,12 +13,12 @@ def lambda_handler(event, context):
   table = os.environ.get('DB_TABLE')
   logging.info(f"## Loaded table name from environemt variable DB_TABLE: {table}")
   dynamodb_table = dynamodb.Table( table )
-  logging.info( event )
+  logging.info( f"event: {event}" )
   requestContext = event['requestContext']
   resourceId = requestContext['resourceId'] 
-  logging.info( resourceId )
+  logging.info( f"resourceId: {resourceId}" )
   pathParameters = event['pathParameters']
-  logging.info( pathParameters )
+  logging.info( f"pathParameters: {pathParameters}" )
 
   body = {}
   statusCode = 200
@@ -27,7 +27,7 @@ def lambda_handler(event, context):
     if resourceId == "GET /users":
         body = dynamodb_table.scan()
         body = body["Items"]
-        logging.info( body )
+        logging.info( f"body: {body}" )
         responseBody = []
         for items in body:
             responseItems = [
@@ -35,11 +35,17 @@ def lambda_handler(event, context):
             ]
             responseBody.append(responseItems)
         body = responseBody
-    if resourceId == "GET /users/{email}":
-        body = dynamodb_table.get_item( Key={'email': pathParameters['email']})
+    if resourceId == "GET /users/{email+}":
+        logging.info( f"pathParameters: {pathParameters['email']}" )
+        logging.info( f"BEFORE QUERY" )
+        value = pathParameters['email']
+        logging.info( f"value: {value}" )
+        body = dynamodb_table.get_item( Key={'email': value})
+        logging.info( f"AFTER QUERY" )
+        logging.info( f"body: {body}" )
         body = body["Item"]
-        logging.info( body )
-        responseBody = [{'email': items['email']}]
+        logging.info( f"body: {body}" )
+        responseBody = [{'email': body['email']}]
         body = responseBody
   except KeyError:
      statusCode = 400
