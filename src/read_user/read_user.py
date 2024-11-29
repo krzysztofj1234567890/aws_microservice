@@ -35,7 +35,7 @@ def lambda_handler(event, context):
             ]
             responseBody.append(responseItems)
         body = responseBody
-    if resourceId == "GET /users/{email+}":
+    elif resourceId == "GET /users/{email+}":
         logging.info( f"pathParameters: {pathParameters['email']}" )
         logging.info( f"BEFORE QUERY" )
         value = pathParameters['email']

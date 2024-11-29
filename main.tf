@@ -66,7 +66,6 @@ module "lambda_write_user" {
             {
                 "Effect": "Allow",
                 "Action": [
-                    "dynamodb:GetItem",
                     "dynamodb:PutItem",
                     "dynamodb:UpdateItem"
                 ],
@@ -115,8 +114,6 @@ module "lambda_read_user" {
                 "Effect": "Allow",
                 "Action": [
                     "dynamodb:GetItem",
-                    "dynamodb:PutItem",
-                    "dynamodb:UpdateItem",
                     "dynamodb:Scan"
                 ],
                 "Resource": "arn:aws:dynamodb:*:*:table/user_table"

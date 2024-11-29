@@ -29,6 +29,11 @@ curl -X GET "$(terraform output -raw gateway_url)/users" --header 'Content-Type:
 curl -X GET "$(terraform output -raw gateway_url)/users/kj@kj.com" --header 'Content-Type: application/json'
 ```
 
+Error:
+```
+curl -X GET "$(terraform output -raw gateway_url)/kj" --header 'Content-Type: application/json'
+```
+
 ## Destroy
 
 ```
