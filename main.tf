@@ -27,6 +27,12 @@ resource "aws_s3_bucket_acl" "lambda_bucket" {
 #######################################################
 # create database
 #######################################################
+data "aws_caller_identity" "current" {}
+
+locals{
+  account_id = data.aws_caller_identity.current.account_id
+}
+
 resource "aws_dynamodb_table" "user_table" {
   name           = "user_table"
   billing_mode   = "PAY_PER_REQUEST"
@@ -39,6 +45,53 @@ resource "aws_dynamodb_table" "user_table" {
     enabled = true
   }
 }
+
+resource "aws_dynamodb_resource_policy" "user_table" {
+  resource_arn = aws_dynamodb_table.user_table.arn
+  policy       = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "redshift.amazonaws.com"
+      },
+      "Action": [
+        "dynamodb:ExportTableToPointInTime",
+        "dynamodb:DescribeTable"
+      ],
+      "Resource": "arn:aws:dynamodb:us-east-1:535002889373:table/user_table",
+      "Condition": {
+        "StringEquals": {
+          "aws:SourceAccount": "535002889373"
+        },
+        "ArnEquals": {
+          "aws:SourceArn": "arn:aws:redshift:us-east-1:535002889373:integration:*"
+        }
+      }
+    },
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "redshift.amazonaws.com"
+      },
+      "Action": "dynamodb:DescribeExport",
+      "Resource": "arn:aws:dynamodb:us-east-1:535002889373:table/user_table/export/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:SourceAccount": "535002889373"
+        },
+        "ArnEquals": {
+          "aws:SourceArn": "arn:aws:redshift:us-east-1:535002889373:integration:*"
+        }
+      }
+    }
+  ]
+}
+EOF
+}
+
 
 #######################################################
 # create lambda(s)
@@ -231,9 +284,118 @@ resource "aws_lambda_permission" "api_gw_read_user" {
 }
 
 #######################################################
+# Redshift serverless
+#######################################################
+resource "aws_redshiftserverless_namespace" "serverless" {
+  namespace_name      = var.redshift_serverless_namespace_name
+  db_name             = var.redshift_serverless_database_name
+  admin_username      = var.redshift_serverless_admin_username
+  admin_user_password = var.redshift_serverless_admin_password
+  iam_roles           = [aws_iam_role.redshift-serverless-role.arn]
+}
+
+resource "aws_redshiftserverless_workgroup" "serverless" {
+  depends_on = [aws_redshiftserverless_namespace.serverless]
+  namespace_name = aws_redshiftserverless_namespace.serverless.id
+  workgroup_name = var.redshift_serverless_workgroup_name
+  base_capacity  = var.redshift_serverless_base_capacity
+  security_group_ids = [module.security_group.security_group_id]
+  subnet_ids         = module.vpc.redshift_subnets
+  publicly_accessible = var.redshift_serverless_publicly_accessible
+  config_parameter {
+    parameter_key = "enable_case_sensitive_identifier"
+    parameter_value = true
+  }
+}
+
+
+/*
+resource "aws_dynamodb_resource_policy" "user_table" {
+  resource_arn = aws_dynamodb_table.user_table.arn
+  policy       = <<EOF
+{
+"Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "redshift.amazonaws.com"
+      },
+      "Action": "redshift:AuthorizeInboundIntegration",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:SourceArn": "${aws_dynamodb_table.user_table.arn}"
+        }
+      }
+    },
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "redshift.amazonaws.com"
+      },
+      "Action": "redshift:CreateInboundIntegration"
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+}
+*/
+
+resource "aws_iam_role" "redshift-serverless-role" {
+  name = "${var.app_name}-${var.app_environment}-redshift-serverless-role"
+  assume_role_policy = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": "sts:AssumeRole",
+      "Principal": {
+        "Service": "redshift.amazonaws.com"
+      },
+      "Effect": "Allow",
+      "Sid": ""
+    }
+  ]
+}
+EOF
+}
+
+# Create and assign an IAM Role Policy to access S3 Buckets
+resource "aws_iam_role_policy" "redshift-s3-full-access-policy" {
+  name = "${var.app_name}-${var.app_environment}-redshift-serverless-role-s3-policy"
+  role = aws_iam_role.redshift-serverless-role.id
+  policy = <<EOF
+{
+   "Version": "2012-10-17",
+   "Statement": [
+     {
+       "Effect": "Allow",
+       "Action": "s3:*",
+       "Resource": "*"
+      }
+   ]
+}
+EOF
+}
+
+# Get the AmazonRedshiftAllCommandsFullAccess policy
+data "aws_iam_policy" "redshift-full-access-policy" {
+  name = "AmazonRedshiftAllCommandsFullAccess"
+}
+
+# Attach the policy to the Redshift role
+resource "aws_iam_role_policy_attachment" "attach-s3" {
+  role       = aws_iam_role.redshift-serverless-role.name
+  policy_arn = data.aws_iam_policy.redshift-full-access-policy.arn
+}
+
+#######################################################
 # Redshift 
 #######################################################
 data "aws_availability_zones" "available" {}
+
 
 locals {
   # name     = "kj-${basename(path.cwd)}"
@@ -243,6 +405,7 @@ locals {
   s3_prefix   = "redshift/${local.name}/"
 }
 
+/*
 module "redshift" {
   source = "terraform-aws-modules/redshift/aws"
   cluster_identifier      = local.name
@@ -267,6 +430,7 @@ module "redshift" {
     s3_key_prefix = local.s3_prefix
   }
 }
+*/
 
 module "vpc" {
   source            = "terraform-aws-modules/vpc/aws"
@@ -274,10 +438,12 @@ module "vpc" {
   name              = local.name
   cidr              = local.vpc_cidr
   azs               = local.azs
-#  private_subnets   = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 8, k)]
-#  redshift_subnets  = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 8, k + 10)]
-  private_subnets   = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 4, k)]
-  redshift_subnets  = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 4, k + 4)]
+# /20
+  private_subnets   = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 6, k)]
+  redshift_subnets  = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 6, k + 10)]
+# /24
+#  private_subnets   = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 4, k)]
+#  redshift_subnets  = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 4, k + 4)]
   create_redshift_subnet_group = false
 }
 
@@ -294,6 +460,7 @@ module "security_group" {
   egress_rules = ["all-all"]
 }
 
+/*
 #resource "aws_kms_key" "redshift" {
 #  description             = "Customer managed key for encrypting Redshift cluster"
 #  deletion_window_in_days = 7
@@ -339,3 +506,5 @@ module "s3_logs" {
   attach_deny_insecure_transport_policy = true
   force_destroy         = true
 }
+
+*/

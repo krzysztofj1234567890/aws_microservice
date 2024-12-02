@@ -55,3 +55,5 @@ https://github.com/terraform-aws-modules/terraform-aws-lambda/blob/master/exampl
 
 https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-dynamo-db.html
 
+https://aws.amazon.com/blogs/big-data/get-started-with-amazon-dynamodb-zero-etl-integration-with-amazon-redshift/
+
