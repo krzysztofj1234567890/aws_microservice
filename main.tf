@@ -35,6 +35,9 @@ resource "aws_dynamodb_table" "user_table" {
     name = "email"
     type = "S"
   }
+  point_in_time_recovery {
+    enabled = true
+  }
 }
 
 #######################################################
@@ -225,4 +228,114 @@ resource "aws_lambda_permission" "api_gw_read_user" {
   function_name = module.lambda_read_user.lambda_function_name
   principal     = "apigateway.amazonaws.com"
   source_arn = "${aws_apigatewayv2_api.lambda.execution_arn}/*/*"
+}
+
+#######################################################
+# Redshift 
+#######################################################
+data "aws_availability_zones" "available" {}
+
+locals {
+  # name     = "kj-${basename(path.cwd)}"
+  name        = "kj-redshift"
+  vpc_cidr    = var.vpc_cidr
+  azs         = slice(data.aws_availability_zones.available.names, 0, 3)
+  s3_prefix   = "redshift/${local.name}/"
+}
+
+module "redshift" {
+  source = "terraform-aws-modules/redshift/aws"
+  cluster_identifier      = local.name
+  allow_version_upgrade   = true
+  node_type               = "ra3.xlplus"
+  number_of_nodes         = 3
+  database_name           = "kjdb"
+  master_username         = "kjdbuser"
+  create_random_password  = true
+  #manage_master_password  = true
+  #manage_master_password_rotation              = true
+  #master_password_rotation_schedule_expression = "rate(90 days)"
+  encrypted               = true
+  #kms_key_arn             = aws_kms_key.redshift.arn
+  enhanced_vpc_routing    = true
+  vpc_security_group_ids  = [module.security_group.security_group_id]
+  subnet_ids              = module.vpc.redshift_subnets
+  availability_zone_relocation_enabled = false
+  logging = {
+    # bucket_name   = aws_s3_bucket.lambda_bucket.id
+    bucket_name     = module.s3_logs.s3_bucket_id
+    s3_key_prefix = local.s3_prefix
+  }
+}
+
+module "vpc" {
+  source            = "terraform-aws-modules/vpc/aws"
+  version           = "~> 5.0"
+  name              = local.name
+  cidr              = local.vpc_cidr
+  azs               = local.azs
+#  private_subnets   = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 8, k)]
+#  redshift_subnets  = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 8, k + 10)]
+  private_subnets   = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 4, k)]
+  redshift_subnets  = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 4, k + 4)]
+  create_redshift_subnet_group = false
+}
+
+module "security_group" {
+  source  = "terraform-aws-modules/security-group/aws//modules/redshift"
+  version = "~> 5.0"
+  name        = local.name
+  description = "Redshift security group"
+  vpc_id      = module.vpc.vpc_id
+  # Allow ingress rules to be accessed only within current VPC
+  ingress_rules       = ["redshift-tcp"]
+  ingress_cidr_blocks = [module.vpc.vpc_cidr_block]
+  # Allow all rules for all protocols
+  egress_rules = ["all-all"]
+}
+
+#resource "aws_kms_key" "redshift" {
+#  description             = "Customer managed key for encrypting Redshift cluster"
+#  deletion_window_in_days = 7
+#  enable_key_rotation     = true
+#}
+
+data "aws_iam_policy_document" "s3_redshift" {
+  statement {
+    sid       = "RedshiftAcl"
+    actions   = ["s3:GetBucketAcl"]
+    resources = [module.s3_logs.s3_bucket_arn]
+    principals {
+      type        = "Service"
+      identifiers = ["redshift.amazonaws.com"]
+    }
+  }
+
+  statement {
+    sid       = "RedshiftWrite"
+    actions   = ["s3:PutObject"]
+    resources = ["${module.s3_logs.s3_bucket_arn}/${local.s3_prefix}*"]
+    condition {
+      test     = "StringEquals"
+      values   = ["bucket-owner-full-control"]
+      variable = "s3:x-amz-acl"
+    }
+    principals {
+      type        = "Service"
+      identifiers = ["redshift.amazonaws.com"]
+    }
+  }
+}
+
+module "s3_logs" {
+  source                = "terraform-aws-modules/s3-bucket/aws"
+  version               = "~> 3.0"
+  bucket_prefix         = local.name
+  acl                   = "log-delivery-write"
+  control_object_ownership = true
+  object_ownership      = "ObjectWriter"
+  attach_policy         = true
+  policy                = data.aws_iam_policy_document.s3_redshift.json
+  attach_deny_insecure_transport_policy = true
+  force_destroy         = true
 }

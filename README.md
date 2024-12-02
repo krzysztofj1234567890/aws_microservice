@@ -40,6 +40,9 @@ curl -X GET "$(terraform output -raw gateway_url)/kj" --header 'Content-Type: ap
 terraform destroy
 ```
 
+## TODO
+- propagate data from DynamoDB to Redshift
+
 ## References
 
 https://developer.hashicorp.com/terraform/tutorials/aws/lambda-api-gateway 
