@@ -46,53 +46,6 @@ resource "aws_dynamodb_table" "user_table" {
   }
 }
 
-resource "aws_dynamodb_resource_policy" "user_table" {
-  resource_arn = aws_dynamodb_table.user_table.arn
-  policy       = <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "redshift.amazonaws.com"
-      },
-      "Action": [
-        "dynamodb:ExportTableToPointInTime",
-        "dynamodb:DescribeTable"
-      ],
-      "Resource": "arn:aws:dynamodb:us-east-1:535002889373:table/user_table",
-      "Condition": {
-        "StringEquals": {
-          "aws:SourceAccount": "535002889373"
-        },
-        "ArnEquals": {
-          "aws:SourceArn": "arn:aws:redshift:us-east-1:535002889373:integration:*"
-        }
-      }
-    },
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "redshift.amazonaws.com"
-      },
-      "Action": "dynamodb:DescribeExport",
-      "Resource": "arn:aws:dynamodb:us-east-1:535002889373:table/user_table/export/*",
-      "Condition": {
-        "StringEquals": {
-          "aws:SourceAccount": "535002889373"
-        },
-        "ArnEquals": {
-          "aws:SourceArn": "arn:aws:redshift:us-east-1:535002889373:integration:*"
-        }
-      }
-    }
-  ]
-}
-EOF
-}
-
-
 #######################################################
 # create lambda(s)
 #######################################################
@@ -308,41 +261,6 @@ resource "aws_redshiftserverless_workgroup" "serverless" {
   }
 }
 
-
-/*
-resource "aws_dynamodb_resource_policy" "user_table" {
-  resource_arn = aws_dynamodb_table.user_table.arn
-  policy       = <<EOF
-{
-"Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "redshift.amazonaws.com"
-      },
-      "Action": "redshift:AuthorizeInboundIntegration",
-      "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "aws:SourceArn": "${aws_dynamodb_table.user_table.arn}"
-        }
-      }
-    },
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "redshift.amazonaws.com"
-      },
-      "Action": "redshift:CreateInboundIntegration"
-      "Resource": "*"
-    }
-  ]
-}
-EOF
-}
-*/
-
 resource "aws_iam_role" "redshift-serverless-role" {
   name = "${var.app_name}-${var.app_environment}-redshift-serverless-role"
   assume_role_policy = <<EOF
@@ -507,4 +425,140 @@ module "s3_logs" {
   force_destroy         = true
 }
 
+*/
+
+#######################################################
+# Dynamodb - Redshift integration
+#######################################################
+
+resource "aws_dynamodb_resource_policy" "user_table" {
+  resource_arn = aws_dynamodb_table.user_table.arn
+  policy       = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "redshift.amazonaws.com"
+      },
+      "Action": [
+        "dynamodb:ExportTableToPointInTime",
+        "dynamodb:DescribeTable"
+      ],
+      "Resource": "arn:aws:dynamodb:${var.region}:${local.account_id}:table/user_table",
+      "Condition": {
+        "StringEquals": {
+          "aws:SourceAccount": "535002889373"
+        },
+        "ArnEquals": {
+          "aws:SourceArn": "arn:aws:redshift:${var.region}:${local.account_id}:integration:*"
+        }
+      }
+    },
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "redshift.amazonaws.com"
+      },
+      "Action": "dynamodb:DescribeExport",
+      "Resource": "arn:aws:dynamodb:${var.region}:${local.account_id}:table/user_table/export/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:SourceAccount": "535002889373"
+        },
+        "ArnEquals": {
+          "aws:SourceArn": "arn:aws:redshift:${var.region}:${local.account_id}:integration:*"
+        }
+      }
+    }
+  ]
+}
+EOF
+}
+
+resource "aws_redshift_resource_policy" "user_table" {
+  resource_arn = aws_redshiftserverless_namespace.serverless.arn
+  policy       = <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "redshift.amazonaws.com"
+      },
+      "Action": "redshift:AuthorizeInboundIntegration",
+      "Condition": {
+        "StringEquals": {
+          "aws:SourceArn": "arn:aws:dynamodb:${var.region}:${local.account_id}:table/user_table"
+        }
+      }
+    },
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::535002889373:user/kj"
+      },
+      "Action": "redshift:CreateInboundIntegration"
+    }
+  ]
+}
+EOF
+}
+
+
+
+/*           22222222222222222222222222222222222222222
+data "aws_iam_user" "kj" {
+  user_name = "kj"
+}
+
+resource "aws_iam_user_policy" "kj" {
+  name = "kj_policy"
+  user = data.aws_iam_user.kj.user_name
+  policy = <<EOF
+{
+  "Statement": [
+    {
+       "Effect": "Allow",
+       "Action": [
+           "redshift:PutResourcePolicy",
+           "redshift:DeleteResourcePolicy",
+           "redshift:GetResourcePolicy"
+       ],
+       "Resource": [
+           "arn:aws:dynamodb:${var.region}:${local.account_id}:table/user_table"
+       ]
+    },
+    {
+       "Effect": "Allow",
+       "Action": [
+           "redshift:DescribeInboundIntegrations"           
+       ],
+       "Resource": [
+           "arn:aws:redshift-serverless:${var.region}:${local.account_id}:namespace/*"
+       ]
+    }
+  ],
+  "Version": "2012-10-17"
+}
+EOF
+}
+
+*/
+
+/*         333333333333333333333333333333333333333 
+resource "aws_rds_integration" "serverless" {
+  integration_name = "serverless"
+  source_arn       = aws_dynamodb_table.user_table.arn
+  target_arn       = aws_redshiftserverless_namespace.serverless.arn
+}
+*/
+/*    444444444444444444444444
+resource "aws_dynamodb_table_integration" "serverless" {
+  integration_name = "serverless"
+  source_arn       = aws_dynamodb_table.user_table.arn
+  target_arn       = aws_redshiftserverless_namespace.serverless.arn
+}
 */
