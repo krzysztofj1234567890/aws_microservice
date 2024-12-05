@@ -27,6 +27,9 @@ curl -X POST "$(terraform output -raw gateway_url)/users" --header 'Content-Type
 # read
 curl -X GET "$(terraform output -raw gateway_url)/users" --header 'Content-Type: application/json'
 curl -X GET "$(terraform output -raw gateway_url)/users/kj@kj.com" --header 'Content-Type: application/json'
+
+# read redshift
+curl -X GET "$(terraform output -raw gateway_url)/redshift_users" --header 'Content-Type: application/json'
 ```
 
 Error:

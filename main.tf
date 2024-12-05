@@ -143,6 +143,57 @@ module "lambda_read_user" {
   number_of_policy_jsons = 1
 }
 
+module "lambda_read_redshift_user" {
+  source = "terraform-aws-modules/lambda/aws"
+  function_name = "ReadRedshiftUser"
+  description   = "List redshift users"
+  handler       = "read_redshift_user.lambda_handler"
+  runtime       = "python3.8"
+  source_path = "src/read_redshift_user"
+  store_on_s3 = true
+  s3_bucket   = aws_s3_bucket.lambda_bucket.id
+  environment_variables = {
+    DB_TABLE = "user_table"
+  }
+  logging_log_group             = "/aws/lambda/read_redshift_user_test"
+  logging_log_format            = "JSON"
+  logging_application_log_level = "INFO"
+  logging_system_log_level      = "DEBUG"
+
+  attach_policy_jsons = true
+  policy_jsons = [
+    <<-EOT
+      {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "redshift-data:ExecuteStatement",
+                    "redshift-serverless:GetCredentials",
+                    "redshift-data:GetStatementResult",
+                    "redshift-data:CancelStatement",
+                    "redshift-data:DescribeStatement",
+                    "redshift-data:ListStatements"
+                ],
+                "Resource": "*"
+            },
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                ],
+                "Resource": "*"
+            }
+          ]
+      }
+    EOT
+  ]
+  number_of_policy_jsons = 1
+}
+
 #######################################################
 # create API Gateway
 #######################################################
@@ -232,6 +283,29 @@ resource "aws_lambda_permission" "api_gw_read_user" {
   statement_id  = "AllowExecutionFromAPIGateway"
   action        = "lambda:InvokeFunction"
   function_name = module.lambda_read_user.lambda_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn = "${aws_apigatewayv2_api.lambda.execution_arn}/*/*"
+}
+
+## read_redshift_user.py
+
+resource "aws_apigatewayv2_integration" "read_redshift_user" {
+  api_id = aws_apigatewayv2_api.lambda.id
+  integration_uri    = module.lambda_read_redshift_user.lambda_function_arn
+  integration_type   = "AWS_PROXY"
+  integration_method = "POST"
+}
+
+resource "aws_apigatewayv2_route" "read_redshift_user" {
+  api_id = aws_apigatewayv2_api.lambda.id
+  route_key = "GET /redshift_users"
+  target    = "integrations/${aws_apigatewayv2_integration.read_redshift_user.id}"
+}
+
+resource "aws_lambda_permission" "api_gw_read_redshift_user" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = module.lambda_read_redshift_user.lambda_function_name
   principal     = "apigateway.amazonaws.com"
   source_arn = "${aws_apigatewayv2_api.lambda.execution_arn}/*/*"
 }
