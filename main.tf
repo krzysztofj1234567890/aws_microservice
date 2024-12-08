@@ -174,7 +174,9 @@ module "lambda_read_redshift_user" {
                     "redshift-data:GetStatementResult",
                     "redshift-data:CancelStatement",
                     "redshift-data:DescribeStatement",
-                    "redshift-data:ListStatements"
+                    "redshift-data:ListStatements",
+                    "redshift-data:ListTables",
+                    "redshift-data:ListSchemas"
                 ],
                 "Resource": "*"
             },

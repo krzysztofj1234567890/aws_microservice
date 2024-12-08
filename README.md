@@ -60,3 +60,9 @@ https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-dynamo-db.
 
 https://aws.amazon.com/blogs/big-data/get-started-with-amazon-dynamodb-zero-etl-integration-with-amazon-redshift/
 
+https://github.com/aws-samples/getting-started-with-amazon-redshift-data-api/blob/main/quick-start/python/RedShiftServerlessDataAPI.py
+
+https://aws.amazon.com/blogs/big-data/use-the-amazon-redshift-data-api-to-interact-with-amazon-redshift-serverless/
+
+https://github.com/opszero/terraform-aws-redshift-serverless/blob/main/main.tf
+
