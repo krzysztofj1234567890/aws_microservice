@@ -1,4 +1,5 @@
 import boto3
+import json
 import os
 import logging
 import time
@@ -27,9 +28,7 @@ def lambda_handler(event, context):
   redshift_workgroup_name='kj-workgroup'
   redshift_database_name = 'kj_database'
 
-  sql_statements = OrderedDict()
-  res = OrderedDict()
-
+  result = OrderedDict()
   body = {}
   statusCode = 200
 
@@ -37,41 +36,27 @@ def lambda_handler(event, context):
     if resourceId == "GET /redshift_users":
 
         redshift_data_api_client = boto3.client('redshift-data')
-#        sql_statements['CREATE_SCHEMA'] = "CREATE SCHEMA IF NOT EXISTS kj ;" 
-#        sql_statements['CREATE_SCHEMA'] = "CREATE ROLE kj ;" 
-##        sql_statements['CREATE_TABLE'] = "CREATE TABLE IF NOT EXISTS public.kj_email ( EMAIL varchar(25) NOT NULL ) ;" 
-##        sql_statements['INSERT'] = "INSERT INTO public.kj_email(email) VALUES ('kjkj2@kj2.com');"
-#        sql_statements['SELECT'] = "SELECT * FROM public.kj_email;"
-##        logger.info("Running sql queries \n")
-##        for command, query in sql_statements.items():
-##            logging.info("Example of {} command :".format(command))
-##            res[command + " STATUS: "] = execute_sql_data_api(redshift_data_api_client, 
-##                                                              redshift_database_name, 
-##                                                              command, 
-##                                                              query,
-##                                                              redshift_workgroup_name,
-##                                                              True )
 
         create_table( redshift_data_api_client, redshift_database_name, redshift_workgroup_name )
 
         tables = list_tables( redshift_data_api_client, redshift_database_name, redshift_workgroup_name )
-        logger.info("List of Tables:")
-        for table in tables:
-            logger.info (table)
+        # responseBody = [{'tables': tables }]
 
         insert_into_table( redshift_data_api_client, redshift_database_name, redshift_workgroup_name )
 
-        select_from_table( redshift_data_api_client, redshift_database_name, redshift_workgroup_name )
+        selectResult = select_from_table( redshift_data_api_client, redshift_database_name, redshift_workgroup_name )
+        responseBody = [{'selectResult': selectResult }]
 
-    logging.error("PRINT Result")
-    logging.error("Result: {}:".format(res))
+        body = json.dumps(responseBody)
+
+    logging.info("Result: {}:".format(result))
 
     result = {
         "statusCode": statusCode,
         "headers": {
             "Content-Type": "application/json"
         },
-        "body": "SUCCESS"
+        "body": body
     }
 
   except BaseException as ex:
@@ -88,63 +73,6 @@ def lambda_handler(event, context):
 
   return result
 
-def execute_sql_data_api(redshift_data_api_client, redshift_database_name, command, query, redshift_workgroup_name, isSynchronous):
-    MAX_WAIT_CYCLES = 20
-    attempts = 0
-    # Calling Redshift Data API with executeStatement()
-    logger.info("====================")
-    query_status = "UNKNOWN"
-    try:
-        logger.info("execute_sql_data_api: before execute_statement \n")
-        res = redshift_data_api_client.execute_statement(
-            Database=redshift_database_name, 
-            WorkgroupName=redshift_workgroup_name, 
-            Sql=query)
-        logger.info("execute_sql_data_api: after execute_statement \n")
-        query_id = res["Id"]
-        desc = redshift_data_api_client.describe_statement(Id=query_id)
-        query_status = desc["Status"]
-        logger.info( "Query status: {} .... for query-->{}".format(query_status, query))
-        done = False
-
-        # Wait until query is finished or max cycles limit has been reached.
-        while not done and isSynchronous and attempts < MAX_WAIT_CYCLES:
-            logger.info( "attempts {}".format( attempts) )
-            attempts += 1
-            time.sleep(1)
-            desc = redshift_data_api_client.describe_statement(Id=query_id)
-            query_status = desc["Status"]
-            logger.info("status: {}".format(query_status))
-            logger.info("status: {} ---desc: {}".format(query_status, desc))
-
-            if query_status == "FAILED":
-                logger.error( 'SQL query failed:' + desc["Error"])
-                raise Exception('SQL query failed:' + query_id + ": " + desc["Error"])
-
-            elif query_status == "FINISHED":
-                logger.info("query status is: {} for query id: {} and command: {}".format(query_status, query_id, command))
-                done = True
-                # print result if there is a result (typically from Select statement)
-                logger.info("result")
-                if desc['HasResultSet']:
-                    response = redshift_data_api_client.get_statement_result(Id=query_id)
-                    logger.info("Printing response of {} query --> {}".format(command, response['Records']))
-            else:
-                logger.info("Current working... query status is: {} ".format(query_status))
-
-        # Timeout Precaution
-        if done == False and attempts >= MAX_WAIT_CYCLES and isSynchronous:
-            logger.info("Limit for MAX_WAIT_CYCLES has been reached before the query was able to finish. We have exited out of the while-loop. You may increase the limit accordingly. \n")
-            raise Exception("query status is: {} for query id: {} and command: {}".format( query_status, query_id, command))
-
-    except (ActiveSessionsExceededException, ActiveStatementsExceededException,  ExecuteStatementException,  InternalServerException,  ValidationException )  as ex:
-        logging.error("ERROR: {}:".format(ex))    
-
-    except BaseException  as ex:
-        logging.error("ERROR: {}:".format(ex))
-
-    return query_status
-
 def list_tables( redshift_data_api_client, redshift_database_name, redshift_workgroup_name ):
     logger.info("------------- list_tables --------------")
     response = redshift_data_api_client.list_tables(
@@ -153,14 +81,18 @@ def list_tables( redshift_data_api_client, redshift_database_name, redshift_work
         MaxResults=100,
         TablePattern="kj%"
     )
-    return response['Tables']
+    tables = response['Tables']
+    logger.info("List of Tables:")
+    for table in tables:
+        logger.info( table )
+    return tables
 
 def create_table( redshift_data_api_client, redshift_database_name, redshift_workgroup_name ):
     logger.info("------------- create_table --------------")
     res = redshift_data_api_client.execute_statement(
         Database=redshift_database_name, 
         WorkgroupName=redshift_workgroup_name, 
-        Sql="CREATE TABLE IF NOT EXISTS public.kj_email ( EMAIL varchar(25) NOT NULL )")
+        Sql="CREATE TABLE IF NOT EXISTS public.kj_email ( email VARCHAR(25) NOT NULL, created_at DATETIME DEFAULT sysdate )")
     
     query_id = res["Id"]
     desc = redshift_data_api_client.describe_statement(Id=query_id)
@@ -172,20 +104,7 @@ def insert_into_table( redshift_data_api_client, redshift_database_name, redshif
     res = redshift_data_api_client.execute_statement(
         Database=redshift_database_name, 
         WorkgroupName=redshift_workgroup_name, 
-        Sql="INSERT INTO public.kj_email( EMAIL ) VALUES ('kjkj2@kj2.com'")
-    
-    query_id = res["Id"]
-    desc = redshift_data_api_client.describe_statement(Id=query_id)
-    query_status = desc["Status"]
-    logger.info( "Query status: {}".format(query_status))
-    logger.info( "Query result: {}".format(  res ))
-
-def select_from_table( redshift_data_api_client, redshift_database_name, redshift_workgroup_name ):
-    logger.info("------------- select_from_table --------------")
-    res = redshift_data_api_client.execute_statement(
-        Database=redshift_database_name, 
-        WorkgroupName=redshift_workgroup_name, 
-        Sql="SELECT * FROM public.kj_email")
+        Sql="INSERT INTO public.kj_email( email ) VALUES ('kjkj2@kj2.com') ")
     
     query_id = res["Id"]
     desc = redshift_data_api_client.describe_statement(Id=query_id)
@@ -196,9 +115,11 @@ def select_from_table( redshift_data_api_client, redshift_database_name, redshif
     MAX_WAIT_CYCLES = 20
     attempts = 0
     done = False
+    result = ""
     while not done and attempts < MAX_WAIT_CYCLES:
         attempts += 1
-        time.sleep(1)
+        logger.info("attempts: {}".format( attempts ) )
+#        time.sleep(1)
         desc = redshift_data_api_client.describe_statement(Id=query_id)
         query_status = desc["Status"]
         if query_status == "FAILED":
@@ -207,9 +128,59 @@ def select_from_table( redshift_data_api_client, redshift_database_name, redshif
         elif query_status == "FINISHED":
             logger.info("query status is: {} for query id: {}".format(query_status, query_id ))
             done = True
-            logger.info("result")
+            logger.info( desc )
             if desc['HasResultSet']:
                 response = redshift_data_api_client.get_statement_result(Id=query_id)
                 logger.info("Printing response of query --> {}".format( response['Records']))
         else:
             logger.info("Current working... query status is: {} ".format(query_status))
+    return result 
+
+def select_from_table( redshift_data_api_client, redshift_database_name, redshift_workgroup_name ):
+    logger.info("------------- select_from_table --------------")
+    result = ""
+
+    try:
+        res = redshift_data_api_client.execute_statement(
+            Database=redshift_database_name, 
+            WorkgroupName=redshift_workgroup_name, 
+            Sql="SELECT * FROM public.kj_email")
+        query_id = res["Id"]
+
+        desc = redshift_data_api_client.describe_statement(Id=query_id)
+        query_status = desc["Status"]
+        logger.info( "Query status: {}".format(query_status))
+        logger.info( "Query result: {}".format(  res ))
+
+        MAX_WAIT_CYCLES = 20
+        attempts = 0
+        done = False
+        
+        while not done and attempts < MAX_WAIT_CYCLES:
+            logger.info("attempts: {}".format( attempts ) )
+            attempts += 1
+            # a loop instead of sleep??
+#            time.sleep(1)
+
+            desc = redshift_data_api_client.describe_statement(Id=query_id)
+            query_status = desc["Status"]
+            logger.info( "Query status: {}".format(query_status))
+            logger.info( "Query desc: {}".format(  desc ))
+
+            if query_status == "FAILED":
+                done = True
+                logger.error( 'SQL query failed:' + desc["Error"])
+            elif query_status == "FINISHED":
+                logger.info("query status is: {} for query id: {}".format(query_status, query_id ))
+                done = True
+                logger.info("result")
+                if desc['HasResultSet']:
+                    response = redshift_data_api_client.get_statement_result(Id=query_id)
+                    result = response['Records']
+                    logger.info("Printing response of query --> {}".format( result ))
+            else:
+                logger.info("Current working... query status is: {} ".format(query_status))
+    except BaseException as ex:
+        logging.error("ERROR: {}:".format(ex))
+    return result 
+        

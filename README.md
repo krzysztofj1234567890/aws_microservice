@@ -14,6 +14,7 @@ cat ~/.aws/*
 terraform init
 terraform plan
 terraform apply
+terraform apply -auto-approve
 ```
 
 ### Test
@@ -28,7 +29,9 @@ curl -X POST "$(terraform output -raw gateway_url)/users" --header 'Content-Type
 curl -X GET "$(terraform output -raw gateway_url)/users" --header 'Content-Type: application/json'
 curl -X GET "$(terraform output -raw gateway_url)/users/kj@kj.com" --header 'Content-Type: application/json'
 
-# read redshift
+# read redshift - run 3 times
+curl -X GET "$(terraform output -raw gateway_url)/redshift_users" --header 'Content-Type: application/json'
+curl -X GET "$(terraform output -raw gateway_url)/redshift_users" --header 'Content-Type: application/json'
 curl -X GET "$(terraform output -raw gateway_url)/redshift_users" --header 'Content-Type: application/json'
 ```
 
