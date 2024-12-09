@@ -385,11 +385,7 @@ resource "aws_iam_role_policy_attachment" "attach-s3" {
   policy_arn = data.aws_iam_policy.redshift-full-access-policy.arn
 }
 
-#######################################################
-# Redshift 
-#######################################################
 data "aws_availability_zones" "available" {}
-
 
 locals {
   # name     = "kj-${basename(path.cwd)}"
@@ -398,33 +394,6 @@ locals {
   azs         = slice(data.aws_availability_zones.available.names, 0, 3)
   s3_prefix   = "redshift/${local.name}/"
 }
-
-/*
-module "redshift" {
-  source = "terraform-aws-modules/redshift/aws"
-  cluster_identifier      = local.name
-  allow_version_upgrade   = true
-  node_type               = "ra3.xlplus"
-  number_of_nodes         = 3
-  database_name           = "kjdb"
-  master_username         = "kjdbuser"
-  create_random_password  = true
-  #manage_master_password  = true
-  #manage_master_password_rotation              = true
-  #master_password_rotation_schedule_expression = "rate(90 days)"
-  encrypted               = true
-  #kms_key_arn             = aws_kms_key.redshift.arn
-  enhanced_vpc_routing    = true
-  vpc_security_group_ids  = [module.security_group.security_group_id]
-  subnet_ids              = module.vpc.redshift_subnets
-  availability_zone_relocation_enabled = false
-  logging = {
-    # bucket_name   = aws_s3_bucket.lambda_bucket.id
-    bucket_name     = module.s3_logs.s3_bucket_id
-    s3_key_prefix = local.s3_prefix
-  }
-}
-*/
 
 module "vpc" {
   source            = "terraform-aws-modules/vpc/aws"
@@ -453,55 +422,6 @@ module "security_group" {
   # Allow all rules for all protocols
   egress_rules = ["all-all"]
 }
-
-/*
-#resource "aws_kms_key" "redshift" {
-#  description             = "Customer managed key for encrypting Redshift cluster"
-#  deletion_window_in_days = 7
-#  enable_key_rotation     = true
-#}
-
-data "aws_iam_policy_document" "s3_redshift" {
-  statement {
-    sid       = "RedshiftAcl"
-    actions   = ["s3:GetBucketAcl"]
-    resources = [module.s3_logs.s3_bucket_arn]
-    principals {
-      type        = "Service"
-      identifiers = ["redshift.amazonaws.com"]
-    }
-  }
-
-  statement {
-    sid       = "RedshiftWrite"
-    actions   = ["s3:PutObject"]
-    resources = ["${module.s3_logs.s3_bucket_arn}/${local.s3_prefix}*"]
-    condition {
-      test     = "StringEquals"
-      values   = ["bucket-owner-full-control"]
-      variable = "s3:x-amz-acl"
-    }
-    principals {
-      type        = "Service"
-      identifiers = ["redshift.amazonaws.com"]
-    }
-  }
-}
-
-module "s3_logs" {
-  source                = "terraform-aws-modules/s3-bucket/aws"
-  version               = "~> 3.0"
-  bucket_prefix         = local.name
-  acl                   = "log-delivery-write"
-  control_object_ownership = true
-  object_ownership      = "ObjectWriter"
-  attach_policy         = true
-  policy                = data.aws_iam_policy_document.s3_redshift.json
-  attach_deny_insecure_transport_policy = true
-  force_destroy         = true
-}
-
-*/
 
 #######################################################
 # Dynamodb - Redshift integration
@@ -582,59 +502,3 @@ resource "aws_redshift_resource_policy" "user_table" {
 }
 EOF
 }
-
-
-
-/*           22222222222222222222222222222222222222222
-data "aws_iam_user" "kj" {
-  user_name = "kj"
-}
-
-resource "aws_iam_user_policy" "kj" {
-  name = "kj_policy"
-  user = data.aws_iam_user.kj.user_name
-  policy = <<EOF
-{
-  "Statement": [
-    {
-       "Effect": "Allow",
-       "Action": [
-           "redshift:PutResourcePolicy",
-           "redshift:DeleteResourcePolicy",
-           "redshift:GetResourcePolicy"
-       ],
-       "Resource": [
-           "arn:aws:dynamodb:${var.region}:${local.account_id}:table/user_table"
-       ]
-    },
-    {
-       "Effect": "Allow",
-       "Action": [
-           "redshift:DescribeInboundIntegrations"           
-       ],
-       "Resource": [
-           "arn:aws:redshift-serverless:${var.region}:${local.account_id}:namespace/*"
-       ]
-    }
-  ],
-  "Version": "2012-10-17"
-}
-EOF
-}
-
-*/
-
-/*         333333333333333333333333333333333333333 
-resource "aws_rds_integration" "serverless" {
-  integration_name = "serverless"
-  source_arn       = aws_dynamodb_table.user_table.arn
-  target_arn       = aws_redshiftserverless_namespace.serverless.arn
-}
-*/
-/*    444444444444444444444444
-resource "aws_dynamodb_table_integration" "serverless" {
-  integration_name = "serverless"
-  source_arn       = aws_dynamodb_table.user_table.arn
-  target_arn       = aws_redshiftserverless_namespace.serverless.arn
-}
-*/
