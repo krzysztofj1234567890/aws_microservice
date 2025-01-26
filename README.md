@@ -1,5 +1,18 @@
 # aws_microservice
 
+## Design
+
+Service uses the following aws services:
+- S3: containing Lambda
+- Dynamodb table
+- API Gateway: send requests to Lambda
+- Lambda:
+  - write to DynamoDB
+  - read from DynamoDB
+  - read from Redshift
+- Redshift serverless
+- VPC: containing subnets for Redshift serverless
+
 ## Setup
 
 Check aws configration
